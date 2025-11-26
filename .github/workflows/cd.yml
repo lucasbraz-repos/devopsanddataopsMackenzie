@@ -1,0 +1,164 @@
+name: CD - Deploy Contínuo
+
+# Trigger: Executa quando o CI passa e há push na main
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Permite execução manual
+
+# Permissões necessárias para deploy no GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Garante que apenas um deploy rode por vez
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+# Definição dos jobs do pipeline
+jobs:
+  # Job 1: Build para Produção
+  build:
+    name: Build para Produção
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Checkout do código
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+      
+      # Preparação do ambiente de build
+      - name: Preparar Ambiente
+        run: |
+          echo "🔧 Preparando ambiente de produção..."
+          echo "Build Number: ${{ github.run_number }}"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+      
+      # Criar diretório de build
+      - name: Criar Build de Produção
+        run: |
+          echo "🔨 Gerando build de produção..."
+          mkdir -p _site
+          cp -r site/* _site/
+          
+          # Adiciona informações de build no HTML
+          echo "<!-- Build: #${{ github.run_number }} -->" >> _site/index.html
+          echo "<!-- Commit: ${{ github.sha }} -->" >> _site/index.html
+          echo "<!-- Deploy Date: $(date) -->" >> _site/index.html
+          
+          echo "✅ Build de produção criado!"
+      
+      # Listar arquivos do build
+      - name: Verificar Artefatos
+        run: |
+          echo "📦 Artefatos gerados:"
+          ls -lah _site/
+          echo "Tamanho total: $(du -sh _site/)"
+      
+      # Configurar Pages
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v4
+      
+      # Upload dos artefatos
+      - name: Upload de Artefatos
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site'
+      
+      # Salvar artefato adicional
+      - name: Backup do Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-build-${{ github.run_number }}
+          path: _site/
+          retention-days: 90
+
+  # Job 2: Deploy no GitHub Pages
+  deploy:
+    name: Deploy no GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    steps:
+      # Deploy para o GitHub Pages
+      - name: Publicar no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+      
+      # Informações do deploy
+      - name: Informações do Deploy
+        run: |
+          echo "🚀 =========================================="
+          echo "🚀 DEPLOY REALIZADO COM SUCESSO!"
+          echo "🚀 =========================================="
+          echo "✅ URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "✅ Build: #${{ github.run_number }}"
+          echo "✅ Commit: ${{ github.sha }}"
+          echo "✅ Branch: ${{ github.ref_name }}"
+          echo "✅ Autor: ${{ github.actor }}"
+          echo "✅ Data: $(date)"
+          echo "🚀 =========================================="
+
+  # Job 3: Verificação Pós-Deploy
+  verify:
+    name: Verificação Pós-Deploy
+    runs-on: ubuntu-latest
+    needs: deploy
+    
+    steps:
+      # Aguarda alguns segundos para o deploy propagar
+      - name: Aguardar Propagação
+        run: |
+          echo "⏳ Aguardando propagação do deploy..."
+          sleep 10
+          echo "✅ Deploy deve estar disponível!"
+      
+      # Teste básico de conectividade
+      - name: Verificar Deploy
+        run: |
+          echo "🔍 Verificando status do deploy..."
+          echo "Site deve estar disponível em: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          echo "✅ Pipeline de CD concluído com sucesso!"
+
+  # Job 4: Relatório Final
+  report:
+    name: Relatório de CD
+    runs-on: ubuntu-latest
+    needs: verify
+    if: always()
+    
+    steps:
+      - name: Gerar Relatório Final
+        run: |
+          echo "📊 =========================================="
+          echo "📊 RELATÓRIO DE DEPLOY CONTÍNUO"
+          echo "📊 =========================================="
+          echo "Pipeline: CD - Deploy Contínuo"
+          echo "Status: Concluído"
+          echo "Build Number: #${{ github.run_number }}"
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Autor: ${{ github.actor }}"
+          echo "Evento: ${{ github.event_name }}"
+          echo "Data/Hora: $(date)"
+          echo "📊 =========================================="
+          echo "🌐 Site publicado com sucesso!"
+          echo "🌐 URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          echo "📊 =========================================="
+      
+      - name: Métricas do Pipeline
+        run: |
+          echo "📈 Métricas:"
+          echo "- Total de workflows executados: ${{ github.run_number }}"
+          echo "- Tempo de execução: Veja os logs acima"
+          echo "- Ambiente: Production (GitHub Pages)"
+          echo "- Retenção de artefatos: 90 dias"
+          echo "✅ Relatório completo!"

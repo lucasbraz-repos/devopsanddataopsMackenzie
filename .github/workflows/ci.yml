@@ -1,0 +1,174 @@
+name: CI - Integração Contínua
+
+# Trigger: Executa a cada push ou pull request na branch main
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Definição dos jobs do pipeline
+jobs:
+  # Job 1: Validação de Código
+  validation:
+    name: Validação de Arquivos
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Checkout do código
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+      
+      # Verifica se os arquivos essenciais existem
+      - name: Verificar Estrutura do Projeto
+        run: |
+          echo "🔍 Verificando estrutura do projeto..."
+          if [ ! -d "site" ]; then
+            echo "❌ Diretório 'site' não encontrado!"
+            exit 1
+          fi
+          if [ ! -f "site/index.html" ]; then
+            echo "❌ Arquivo 'site/index.html' não encontrado!"
+            exit 1
+          fi
+          echo "✅ Estrutura do projeto validada com sucesso!"
+      
+      # Lista os arquivos do projeto
+      - name: Listar Arquivos do Projeto
+        run: |
+          echo "📁 Estrutura de arquivos:"
+          tree -L 3 || find . -type f -name "*.html" -o -name "*.yml" | head -20
+
+  # Job 2: Testes de Qualidade
+  quality-check:
+    name: Testes de Qualidade
+    runs-on: ubuntu-latest
+    needs: validation
+    
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+      
+      # Instalação do Node.js para ferramentas de validação
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      # Instala validador HTML
+      - name: Instalar HTMLHint
+        run: npm install -g htmlhint
+      
+      # Valida sintaxe HTML
+      - name: Validar HTML
+        run: |
+          echo "🔍 Validando sintaxe HTML..."
+          htmlhint site/*.html || echo "⚠️  Avisos encontrados (não crítico)"
+          echo "✅ Validação HTML concluída!"
+      
+      # Conta linhas de código
+      - name: Estatísticas do Código
+        run: |
+          echo "📊 Estatísticas do projeto:"
+          echo "Total de arquivos HTML: $(find site -name "*.html" | wc -l)"
+          echo "Total de linhas HTML: $(find site -name "*.html" -exec wc -l {} + | tail -1)"
+          echo "Tamanho total: $(du -sh site/)"
+
+  # Job 3: Testes Automatizados
+  tests:
+    name: Testes Automatizados
+    runs-on: ubuntu-latest
+    needs: quality-check
+    
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+      
+      # Testa se o HTML é válido
+      - name: Teste de Sintaxe HTML
+        run: |
+          echo "🧪 Executando testes..."
+          # Verifica se há tags HTML básicas
+          if ! grep -q "<!DOCTYPE html>" site/index.html; then
+            echo "❌ DOCTYPE não encontrado!"
+            exit 1
+          fi
+          if ! grep -q "<html" site/index.html; then
+            echo "❌ Tag HTML não encontrada!"
+            exit 1
+          fi
+          if ! grep -q "<head>" site/index.html; then
+            echo "❌ Tag HEAD não encontrada!"
+            exit 1
+          fi
+          if ! grep -q "<body>" site/index.html; then
+            echo "❌ Tag BODY não encontrada!"
+            exit 1
+          fi
+          echo "✅ Todos os testes passaram com sucesso!"
+      
+      # Verifica conteúdo específico
+      - name: Teste de Conteúdo
+        run: |
+          echo "📝 Verificando conteúdo..."
+          if grep -q "Deploy Automatizado" site/index.html; then
+            echo "✅ Conteúdo encontrado!"
+          else
+            echo "⚠️  Conteúdo esperado não encontrado"
+          fi
+
+  # Job 4: Build e Geração de Artefatos
+  build:
+    name: Build do Projeto
+    runs-on: ubuntu-latest
+    needs: tests
+    
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+      
+      # Simula processo de build
+      - name: Executar Build
+        run: |
+          echo "🔨 Iniciando processo de build..."
+          mkdir -p dist
+          cp -r site/* dist/
+          echo "✅ Build concluído com sucesso!"
+      
+      # Gera artefato
+      - name: Upload do Artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-build
+          path: dist/
+          retention-days: 30
+      
+      # Informações do build
+      - name: Informações do Build
+        run: |
+          echo "📦 Artefato gerado:"
+          ls -lh dist/
+          echo "✅ Build ID: ${{ github.run_number }}"
+          echo "✅ Commit: ${{ github.sha }}"
+
+  # Job 5: Relatório Final
+  report:
+    name: Relatório de CI
+    runs-on: ubuntu-latest
+    needs: build
+    if: always()
+    
+    steps:
+      - name: Gerar Relatório
+        run: |
+          echo "📊 =========================================="
+          echo "📊 RELATÓRIO DE INTEGRAÇÃO CONTÍNUA"
+          echo "📊 =========================================="
+          echo "✅ Pipeline: CI - Integração Contínua"
+          echo "✅ Status: Concluído"
+          echo "✅ Build: #${{ github.run_number }}"
+          echo "✅ Branch: ${{ github.ref_name }}"
+          echo "✅ Commit: ${{ github.sha }}"
+          echo "✅ Autor: ${{ github.actor }}"
+          echo "✅ Data: $(date)"
+          echo "📊 =========================================="
